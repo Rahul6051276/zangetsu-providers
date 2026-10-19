@@ -1,8 +1,7 @@
 // providers/torrentio.js
-// Zangetsu Provider for Torrentio with robust IMDb resolution
+// Zangetsu Provider for Torrentio (CommonJS / QuickJS Compatible)
 
 const TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
-// Primary & backup mirrors for Torrentio
 const TORRENTIO_MIRRORS = [
   "https://torrentio.strem.fun",
   "https://torrentio.whalepool.site",
@@ -12,17 +11,17 @@ const TORRENTIO_MIRRORS = [
 async function search(query) {
   const results = [];
   try {
-    const url = `https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=1`;
+    const url = "https://api.themoviedb.org/3/search/multi?api_key=" + TMDB_API_KEY + "&query=" + encodeURIComponent(query) + "&page=1";
     const res = await fetch(url);
     const data = await res.json();
 
     if (data && data.results) {
-      data.results.forEach((item) => {
+      data.results.forEach(function(item) {
         if (item.media_type === "movie" || item.media_type === "tv") {
           results.push({
             id: String(item.id),
             title: item.title || item.name,
-            poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
+            poster: item.poster_path ? "https://image.tmdb.org/t/p/w500" + item.poster_path : null,
             type: item.media_type === "tv" ? "series" : "movie",
             tmdbId: item.id,
             tmdbIsTv: item.media_type === "tv"
@@ -49,8 +48,9 @@ async function getDetail(item) {
 }
 
 async function resolveImdbId(detail) {
-  // Agar detail me direct imdbId hai
-  if (detail.imdbId && detail.imdbId.startsWith("tt")) return detail.imdbId;
+  if (detail.imdbId && String(detail.imdbId).startsWith("tt")) {
+    return detail.imdbId;
+  }
 
   const tmdbId = detail.tmdbId || detail.id;
   if (!tmdbId) return null;
@@ -58,7 +58,7 @@ async function resolveImdbId(detail) {
   try {
     const isTv = detail.tmdbIsTv || Boolean(detail.season && detail.episode);
     const typePath = isTv ? "tv" : "movie";
-    const extUrl = `https://api.themoviedb.org/3/${typePath}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
+    const extUrl = "https://api.themoviedb.org/3/" + typePath + "/" + tmdbId + "/external_ids?api_key=" + TMDB_API_KEY;
     const extRes = await fetch(extUrl);
     const extData = await extRes.json();
     return extData.imdb_id || null;
@@ -72,22 +72,18 @@ async function getStreams(detail) {
 
   try {
     const imdbId = await resolveImdbId(detail);
-    if (!imdbId) {
-      console.warn("Could not resolve IMDb ID for title:", detail.title);
-      return [];
-    }
+    if (!imdbId) return [];
 
     const isTv = detail.tmdbIsTv || Boolean(detail.season && detail.episode);
-    let path = `stream/movie/${imdbId}.json`;
+    let path = "stream/movie/" + imdbId + ".json";
     if (isTv && detail.season && detail.episode) {
-      path = `stream/series/${imdbId}:${detail.season}:${detail.episode}.json`;
+      path = "stream/series/" + imdbId + ":" + detail.season + ":" + detail.episode + ".json";
     }
 
-    // Try mirrors if one fails
     let data = null;
     for (const mirror of TORRENTIO_MIRRORS) {
       try {
-        const response = await fetch(`${mirror}/${path}`, {
+        const response = await fetch(mirror + "/" + path, {
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
           }
@@ -104,10 +100,10 @@ async function getStreams(detail) {
     }
 
     if (data && Array.isArray(data.streams)) {
-      data.streams.forEach((item) => {
+      data.streams.forEach(function(item) {
         let streamUrl = item.url;
         if (!streamUrl && item.infoHash) {
-          streamUrl = `magnet:?xt=urn:btih:${item.infoHash}&dn=${encodeURIComponent(item.title || "Stream")}`;
+          streamUrl = "magnet:?xt=urn:btih:" + item.infoHash + "&dn=" + encodeURIComponent(item.title || "Stream");
         }
 
         if (streamUrl) {
@@ -115,7 +111,7 @@ async function getStreams(detail) {
           const isHindi = /(hindi|dual audio|dubbed|hin)/i.test(rawTitle);
 
           streams.push({
-            name: `${isHindi ? "🇮🇳 HINDI | " : ""}Torrentio`,
+            name: (isHindi ? "🇮🇳 HINDI | " : "") + "Torrentio",
             title: rawTitle,
             url: streamUrl,
             quality: parseQuality(rawTitle),
@@ -126,8 +122,7 @@ async function getStreams(detail) {
       });
     }
 
-    // Sort Hindi first
-    streams.sort((a, b) => {
+    streams.sort(function(a, b) {
       if (a.isHindi !== b.isHindi) return b.isHindi ? 1 : -1;
       return 0;
     });
@@ -146,8 +141,10 @@ function parseQuality(text) {
   return "Auto";
 }
 
-export default {
-  search,
-  getDetail,
-  getStreams
-};
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    search,
+    getDetail,
+    getStreams
+  };
+}
