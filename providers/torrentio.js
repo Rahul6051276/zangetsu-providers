@@ -1,12 +1,14 @@
 // providers/torrentio.js
-// Zangetsu Provider for Torrentio (Movies & TV Series)
+// Zangetsu Provider for Torrentio with robust IMDb resolution
 
-const BASE_URL = "https://torrentio.strem.fun";
 const TMDB_API_KEY = "1865f43a0549ca50d341dd9ab8b29f49";
+// Primary & backup mirrors for Torrentio
+const TORRENTIO_MIRRORS = [
+  "https://torrentio.strem.fun",
+  "https://torrentio.whalepool.site",
+  "https://knightcrawler.elfhosted.com"
+];
 
-/**
- * Movie/Series Search Handler via TMDB
- */
 async function search(query) {
   const results = [];
   try {
@@ -34,9 +36,6 @@ async function search(query) {
   return results;
 }
 
-/**
- * Metadata & TMDB Tracker Sync
- */
 async function getDetail(item) {
   const tmdbId = item.tmdbId || item.id;
   const isTv = item.tmdbIsTv || item.type === "series";
@@ -49,47 +48,64 @@ async function getDetail(item) {
   };
 }
 
-/**
- * Fetch Streams & Magnet Links
- */
-async function getStreams(detail) {
-  const streams = [];
+async function resolveImdbId(detail) {
+  // Agar detail me direct imdbId hai
+  if (detail.imdbId && detail.imdbId.startsWith("tt")) return detail.imdbId;
+
+  const tmdbId = detail.tmdbId || detail.id;
+  if (!tmdbId) return null;
 
   try {
-    const tmdbId = detail.tmdbId || detail.id;
     const isTv = detail.tmdbIsTv || Boolean(detail.season && detail.episode);
-
-    // 1. Resolve IMDb ID from TMDB
     const typePath = isTv ? "tv" : "movie";
     const extUrl = `https://api.themoviedb.org/3/${typePath}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
     const extRes = await fetch(extUrl);
     const extData = await extRes.json();
-    const imdbId = extData.imdb_id;
+    return extData.imdb_id || null;
+  } catch (e) {
+    return null;
+  }
+}
 
+async function getStreams(detail) {
+  const streams = [];
+
+  try {
+    const imdbId = await resolveImdbId(detail);
     if (!imdbId) {
+      console.warn("Could not resolve IMDb ID for title:", detail.title);
       return [];
     }
 
-    // 2. Build Torrentio endpoint path
-    let streamEndpoint = `${BASE_URL}/stream/movie/${imdbId}.json`;
+    const isTv = detail.tmdbIsTv || Boolean(detail.season && detail.episode);
+    let path = `stream/movie/${imdbId}.json`;
     if (isTv && detail.season && detail.episode) {
-      streamEndpoint = `${BASE_URL}/stream/series/${imdbId}:${detail.season}:${detail.episode}.json`;
+      path = `stream/series/${imdbId}:${detail.season}:${detail.episode}.json`;
     }
 
-    // 3. Request Torrentio
-    const response = await fetch(streamEndpoint, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    // Try mirrors if one fails
+    let data = null;
+    for (const mirror of TORRENTIO_MIRRORS) {
+      try {
+        const response = await fetch(`${mirror}/${path}`, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          }
+        });
+        if (response.ok) {
+          data = await response.json();
+          if (data && Array.isArray(data.streams) && data.streams.length > 0) {
+            break;
+          }
+        }
+      } catch (err) {
+        // try next mirror
       }
-    });
-
-    const data = await response.json();
+    }
 
     if (data && Array.isArray(data.streams)) {
       data.streams.forEach((item) => {
         let streamUrl = item.url;
-
-        // If direct URL is absent, construct magnet link using infoHash
         if (!streamUrl && item.infoHash) {
           streamUrl = `magnet:?xt=urn:btih:${item.infoHash}&dn=${encodeURIComponent(item.title || "Stream")}`;
         }
@@ -110,14 +126,14 @@ async function getStreams(detail) {
       });
     }
 
-    // Sort: Hindi dubs first, then default
+    // Sort Hindi first
     streams.sort((a, b) => {
       if (a.isHindi !== b.isHindi) return b.isHindi ? 1 : -1;
       return 0;
     });
 
   } catch (err) {
-    console.error("Torrentio getStreams error:", err);
+    console.error("Torrentio getStreams failed:", err);
   }
 
   return streams;
@@ -127,8 +143,7 @@ function parseQuality(text) {
   if (/2160p|4k/i.test(text)) return "4K";
   if (/1080p/i.test(text)) return "1080p";
   if (/720p/i.test(text)) return "720p";
-  if (/480p/i.test(text)) return "480p";
-  return "HD";
+  return "Auto";
 }
 
 export default {
