@@ -91,6 +91,16 @@
       "file": "providers/torbox.js",
       "logo": "icons/torbox.png",
       "nsfw": false
+    },
+    {
+      "id": "torrentio",
+      "name": "Torrentio",
+      "version": "1.0.0",
+      "type": "movie",
+      "lang": "hi",
+      "file": "providers/torrentio.js",
+      "logo": "icons/torrentio.png",
+      "nsfw": false
     }
   ]
 }
