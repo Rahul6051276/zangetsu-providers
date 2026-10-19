@@ -93,13 +93,13 @@
       "nsfw": false
     },
     {
-      "id": "torrentio",
-      "name": "Torrentio",
+      "id": "desiflix",
+      "name": "DesiFlix (Hindi)",
       "version": "1.0.0",
       "type": "movie",
       "lang": "hi",
-      "file": "providers/torrentio.js",
-      "logo": "icons/torrentio.png",
+      "file": "providers/desiflix.js",
+      "logo": "icons/desiflix.png",
       "nsfw": false
     }
   ]
